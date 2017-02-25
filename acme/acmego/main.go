@@ -113,7 +113,7 @@ func reformat(id int, name string) {
 	f.Close()
 	defer os.Remove(tmp)
 
-	diff, _ := exec.Command("9", "diff", name, tmp).CombinedOutput()
+	diff, _ := exec.Command("/usr/bin/diff", name, tmp).CombinedOutput()
 
 	w.Write("ctl", []byte("mark"))
 	w.Write("ctl", []byte("nomark"))
@@ -121,6 +121,11 @@ func reformat(id int, name string) {
 	for i := len(diffLines) - 1; i >= 0; i-- {
 		line := diffLines[i]
 		if line == "" {
+			continue
+		}
+		if line == `\ No newline at end of file` {
+			w.Addr("$")
+			w.Write("data", []byte("\n"))
 			continue
 		}
 		if line[0] == '<' || line[0] == '-' || line[0] == '>' {
