@@ -10,7 +10,6 @@ package main
 
 import (
 	"bytes"
-	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -18,15 +17,11 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"9fans.net/go/acme"
 )
 
-var gofmt = flag.Bool("f", false, "run gofmt on the entire file after Put")
-
 func main() {
-	flag.Parse()
 	l, err := acme.Log()
 	if err != nil {
 		log.Fatal(err)
@@ -78,25 +73,6 @@ func reformat(id int, name string) {
 	}
 
 	if bytes.Equal(old, new) {
-		return
-	}
-
-	if !*gofmt {
-		oldTop, err := readImports(bytes.NewReader(old), true)
-		if err != nil {
-			//log.Print(err)
-			return
-		}
-		newTop, err := readImports(bytes.NewReader(new), true)
-		if err != nil {
-			//log.Print(err)
-			return
-		}
-		if bytes.Equal(oldTop, newTop) {
-			return
-		}
-		w.Addr("0,#%d", utf8.RuneCount(oldTop))
-		w.Write("data", newTop)
 		return
 	}
 
