@@ -21,7 +21,64 @@ import (
 	"9fans.net/go/acme"
 )
 
+type Formatter interface {
+	format(string) ([]byte, error)
+}
+
+type GoImportFmt struct {
+	cmd string
+}
+
+func (g *GoImportFmt) format(file string) ([]byte, error) {
+	new, err := execFmt(g.cmd, file)
+	if err != nil {
+		// Probably a syntax error, use the compiler for better message.
+		// For now use 'go build file.go' and strip the package header.
+		// We run it in /var/run so that paths do not get shortened
+		// (assuming /var/run exists and no one is editing go files under that path).
+		// A better fix to both would be to use go tool 6g, but we don't know
+		// whether 6g is the right architecture. Could parse 'go env' output.
+		// Or maybe the go command should have 'go tool compile' and 'go tool link'.
+		cmd := exec.Command("go", "build", file)
+		cmd.Dir = "/var/run"
+		out, _ := cmd.CombinedOutput()
+		start := []byte("# command-line-arguments\n")
+		if !bytes.HasPrefix(out, start) {
+			fmt.Fprintf(os.Stderr, "goimports %s: %v\n%s", file, err, new)
+			return new, err
+		}
+		fmt.Fprintf(os.Stderr, "%s", out)
+	}
+	return new, err
+}
+
+func execFmt(cmd, file string) ([]byte, error) {
+	return exec.Command(cmd, file).CombinedOutput()
+}
+
+type PyFmt struct {
+	cmd string
+}
+
+func (py *PyFmt) format(file string) ([]byte, error) {
+	new, err := execFmt(py.cmd, file)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "yapf %s: %v\n%s", file, err, new)
+	}
+	return new, err
+}
+
+func newFmts() map[string]Formatter {
+	gofmt := &GoImportFmt{cmd: "goimports"}
+	pyfmt := &PyFmt{cmd: "yapf"}
+	fmts := make(map[string]Formatter)
+	fmts["py"] = pyfmt
+	fmts["go"] = gofmt
+	return fmts
+}
+
 func main() {
+	fmts := newFmts()
 	l, err := acme.Log()
 	if err != nil {
 		log.Fatal(err)
@@ -32,13 +89,22 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		if event.Name != "" && event.Op == "put" && strings.HasSuffix(event.Name, ".go") {
-			reformat(event.ID, event.Name)
+		if event.Name != "" && event.Op == "put" {
+			if fmter, ok := fmts[fileExt(event.Name)]; ok {
+				reformat(event.ID, event.Name, fmter)
+			}
 		}
 	}
 }
 
-func reformat(id int, name string) {
+func fileExt(filePath string) string {
+	if n := strings.LastIndex(filePath, "."); n != -1 {
+		return filePath[n+1:]
+	}
+	return ""
+}
+
+func reformat(id int, name string, fmter Formatter) {
 	w, err := acme.Open(id, nil)
 	if err != nil {
 		log.Print(err)
@@ -51,24 +117,8 @@ func reformat(id int, name string) {
 		//log.Print(err)
 		return
 	}
-	new, err := exec.Command("goimports", name).CombinedOutput()
+	new, err := fmter.format(name)
 	if err != nil {
-		// Probably a syntax error, use the compiler for better message.
-		// For now use 'go build file.go' and strip the package header.
-		// We run it in /var/run so that paths do not get shortened
-		// (assuming /var/run exists and no one is editing go files under that path).
-		// A better fix to both would be to use go tool 6g, but we don't know
-		// whether 6g is the right architecture. Could parse 'go env' output.
-		// Or maybe the go command should have 'go tool compile' and 'go tool link'.
-		cmd := exec.Command("go", "build", name)
-		cmd.Dir = "/var/run"
-		out, _ := cmd.CombinedOutput()
-		start := []byte("# command-line-arguments\n")
-		if !bytes.HasPrefix(out, start) {
-			fmt.Fprintf(os.Stderr, "goimports %s: %v\n%s", name, err, new)
-			return
-		}
-		fmt.Fprintf(os.Stderr, "%s", out)
 		return
 	}
 
