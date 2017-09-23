@@ -52,7 +52,11 @@ func (g *GoImportFmt) format(file string) ([]byte, error) {
 	return new, err
 }
 
-func execFmt(cmd, file string) ([]byte, error) {
+func execFmt(cmd, file string, args ...string) ([]byte, error) {
+	if len(args) > 0 {
+		args = append(args, file)
+		return exec.Command(cmd, args...).CombinedOutput()
+	}
 	return exec.Command(cmd, file).CombinedOutput()
 }
 
@@ -68,12 +72,26 @@ func (py *PyFmt) format(file string) ([]byte, error) {
 	return new, err
 }
 
+type RustFmt struct {
+	cmd string
+}
+
+func (rs *RustFmt) format(file string) ([]byte, error) {
+	new, err := execFmt(rs.cmd, file, "--write-mode", "display")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s %s: %v\n%s", rs.cmd, file, err, new)
+	}
+	return new, err
+}
+
 func newFmts() map[string]Formatter {
 	gofmt := &GoImportFmt{cmd: "goimports"}
 	pyfmt := &PyFmt{cmd: "yapf"}
+	rustfmt := &RustFmt{cmd: "rustfmt"}
 	fmts := make(map[string]Formatter)
 	fmts["py"] = pyfmt
 	fmts["go"] = gofmt
+	fmts["rs"] = rustfmt
 	return fmts
 }
 
