@@ -84,14 +84,31 @@ func (rs *RustFmt) format(file string) ([]byte, error) {
 	return new, err
 }
 
+// Default formatter adds an end of line at the end of file
+// This formatter makes use of the executable implemented in
+// https://github.com/jordilin/aeol
+type DefaultEolFmt struct {
+	cmd string
+}
+
+func (df *DefaultEolFmt) format(file string) ([]byte, error) {
+	new, err := execFmt(df.cmd, file)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "default fmt eol %s: %v\n%s", file, err, new)
+	}
+	return new, err
+}
+
 func newFmts() map[string]Formatter {
 	gofmt := &GoImportFmt{cmd: "goimports"}
 	pyfmt := &PyFmt{cmd: "yapf"}
 	rustfmt := &RustFmt{cmd: "rustfmt"}
+	defaultfmt := &DefaultEolFmt{cmd: "aeol"}
 	fmts := make(map[string]Formatter)
 	fmts["py"] = pyfmt
 	fmts["go"] = gofmt
 	fmts["rs"] = rustfmt
+	fmts["anyext"] = defaultfmt
 	return fmts
 }
 
@@ -110,6 +127,8 @@ func main() {
 		if event.Name != "" && event.Op == "put" {
 			if fmter, ok := fmts[fileExt(event.Name)]; ok {
 				reformat(event.ID, event.Name, fmter)
+			} else {
+				reformat(event.ID, event.Name, fmts["anyext"])
 			}
 		}
 	}
