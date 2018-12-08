@@ -77,7 +77,7 @@ type RustFmt struct {
 }
 
 func (rs *RustFmt) format(file string) ([]byte, error) {
-	new, err := execFmt(rs.cmd, "-q", "--unstable-features", "--skip-children", "--emit", "stdout", file)
+	new, err := execFmt(rs.cmd, "-q", "--emit", "stdout", file)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s %s: %v\n%s", rs.cmd, file, err, new)
 	}
