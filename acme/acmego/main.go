@@ -130,6 +130,8 @@ func main() {
 			} else {
 				reformat(event.ID, event.Name, fmts["anyext"])
 			}
+			out, _ := exec.Command("bl2plus", event.Name).CombinedOutput()
+			fmt.Fprintf(os.Stderr, "%s", out)
 		}
 	}
 }
@@ -176,7 +178,17 @@ func reformat(id int, name string, fmter Formatter) {
 	f.Close()
 	defer os.Remove(tmp)
 
-	diff, _ := exec.Command("/usr/bin/diff", name, tmp).CombinedOutput()
+	diff, _ := exec.Command("9", "diff", name, tmp).CombinedOutput()
+
+	latest, err := w.ReadAll("body")
+	if err != nil {
+		log.Print(err)
+		return
+	}
+	if !bytes.Equal(old, latest) {
+		log.Printf("skipped update to %s: window modified since Put\n", name, len(old), len(latest))
+		return
+	}
 
 	w.Write("ctl", []byte("mark"))
 	w.Write("ctl", []byte("nomark"))
@@ -184,11 +196,6 @@ func reformat(id int, name string, fmter Formatter) {
 	for i := len(diffLines) - 1; i >= 0; i-- {
 		line := diffLines[i]
 		if line == "" {
-			continue
-		}
-		if line == `\ No newline at end of file` {
-			w.Addr("$")
-			w.Write("data", []byte("\n"))
 			continue
 		}
 		if line[0] == '<' || line[0] == '-' || line[0] == '>' {
