@@ -124,14 +124,19 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
+		modified := false
+		anyextFmtUsed := false
 		if event.Name != "" && event.Op == "put" {
 			if fmter, ok := fmts[fileExt(event.Name)]; ok {
-				reformat(event.ID, event.Name, fmter)
+				modified = reformat(event.ID, event.Name, fmter)
 			} else {
-				reformat(event.ID, event.Name, fmts["anyext"])
+				anyextFmtUsed = true
+				modified = reformat(event.ID, event.Name, fmts["anyext"])
 			}
-			out, _ := exec.Command("bl2plus", event.Name).CombinedOutput()
-			fmt.Fprintf(os.Stderr, "%s", out)
+			if !modified || anyextFmtUsed {
+				output, _ := exec.Command("bl2plus", event.Name).CombinedOutput()
+				fmt.Fprintf(os.Stderr, "%s", output)
+			}
 		}
 	}
 }
@@ -143,51 +148,52 @@ func fileExt(filePath string) string {
 	return ""
 }
 
-func reformat(id int, name string, fmter Formatter) {
-	w, err := acme.Open(id, nil)
+func reformat(id int, name string, fmter Formatter) bool {
+	win, err := acme.Open(id, nil)
 	if err != nil {
 		log.Print(err)
-		return
+		return false
 	}
+	w := Window{win, false}
 	defer w.CloseFiles()
 
 	old, err := ioutil.ReadFile(name)
 	if err != nil {
 		//log.Print(err)
-		return
+		return false
 	}
 	new, err := fmter.format(name)
 	if err != nil {
-		return
+		return false
 	}
 
 	if bytes.Equal(old, new) {
-		return
+		return false
 	}
 
 	f, err := ioutil.TempFile("", "acmego")
 	if err != nil {
 		log.Print(err)
-		return
+		return false
 	}
 	if _, err := f.Write(new); err != nil {
 		log.Print(err)
-		return
+		return false
 	}
 	tmp := f.Name()
 	f.Close()
 	defer os.Remove(tmp)
 
-	diff, _ := exec.Command("9", "diff", name, tmp).CombinedOutput()
+	diff, _ := exec.Command("/usr/bin/diff", name, tmp).CombinedOutput()
 
 	latest, err := w.ReadAll("body")
 	if err != nil {
 		log.Print(err)
-		return
+		return false
 	}
 	if !bytes.Equal(old, latest) {
 		log.Printf("skipped update to %s: window modified since Put\n", name, len(old), len(latest))
-		return
+		return false
 	}
 
 	w.Write("ctl", []byte("mark"))
@@ -196,6 +202,11 @@ func reformat(id int, name string, fmter Formatter) {
 	for i := len(diffLines) - 1; i >= 0; i-- {
 		line := diffLines[i]
 		if line == "" {
+			continue
+		}
+		if line == `\ No newline at end of file` {
+			w.Addr("$")
+			w.Write("data", []byte("\n"))
 			continue
 		}
 		if line[0] == '<' || line[0] == '-' || line[0] == '>' {
@@ -228,6 +239,7 @@ func reformat(id int, name string, fmter Formatter) {
 				log.Print(err)
 				break
 			}
+
 			w.Write("data", findLines(new, newStart, newEnd))
 		case 'd':
 			err := w.Addr("%d,%d", oldStart, oldEnd)
@@ -235,9 +247,25 @@ func reformat(id int, name string, fmter Formatter) {
 				log.Print(err)
 				break
 			}
+
 			w.Write("data", nil)
 		}
 	}
+	return w.modified
+}
+
+// Encapsulates an Acme window along with its current state, modified or not.
+// This will allow us to execute additional fmt tools like bl2plus once the
+// window has been saved (not modified) and the original formatter has done
+// its job.
+type Window struct {
+	*acme.Win
+	modified bool
+}
+
+func (w *Window) Write(ftype string, data []byte) {
+	w.Win.Write(ftype, data)
+	w.modified = true
 }
 
 func parseSpan(text string) (start, end int) {
