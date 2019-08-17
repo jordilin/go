@@ -63,7 +63,7 @@ type RustFmt struct {
 }
 
 func (rs *RustFmt) format(file string) ([]byte, error) {
-	new, err := execFmt(rs.cmd, "-q", "--emit", "stdout", file)
+	new, err := execFmt(rs.cmd, file)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s %s: %v\n%s", rs.cmd, file, err, new)
 	}
@@ -100,7 +100,7 @@ func (el *ElmFmt) format(file string) ([]byte, error) {
 func newFmts() map[string]Formatter {
 	gofmt := &GoImportFmt{cmd: "goimports"}
 	pyfmt := &PyFmt{cmd: "yapf"}
-	rustfmt := &RustFmt{cmd: "rustfmt"}
+	rustfmt := &RustFmt{cmd: "fmtrust"}
 	defaultfmt := &DefaultEolFmt{cmd: "aeol"}
 	elmfmt := &ElmFmt{cmd: "elmfmt"}
 	fmts := make(map[string]Formatter)
