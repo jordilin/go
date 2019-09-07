@@ -5,18 +5,19 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 )
 
 type Formatter interface {
 	format(string) ([]byte, error)
 }
 
-func execFmt(cmd, file string, args ...string) ([]byte, error) {
+func buildCmd(cmd, file string, args ...string) *exec.Cmd {
 	if len(args) > 0 {
 		args = append(args, file)
-		return exec.Command(cmd, args...).CombinedOutput()
+		return exec.Command(cmd, args...)
 	}
-	return exec.Command(cmd, file).CombinedOutput()
+	return exec.Command(cmd, file)
 }
 
 type GoImportFmt struct {
@@ -24,7 +25,11 @@ type GoImportFmt struct {
 }
 
 func (g *GoImportFmt) format(file string) ([]byte, error) {
-	new, err := execFmt(g.cmd, file)
+	cmd := buildCmd(g.cmd, file)
+	// Grab the parent directory of the file where we are going to execute
+	// the command.
+	cmd.Dir = filepath.Dir(file)
+	new, err := cmd.CombinedOutput()
 	if err != nil {
 		// Probably a syntax error, use the compiler for better message.
 		// For now use 'go build file.go' and strip the package header.
@@ -51,7 +56,8 @@ type PyFmt struct {
 }
 
 func (py *PyFmt) format(file string) ([]byte, error) {
-	new, err := execFmt(py.cmd, file)
+	cmd := buildCmd(py.cmd, file)
+	new, err := cmd.CombinedOutput()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "yapf %s: %v\n%s", file, err, new)
 	}
@@ -63,7 +69,8 @@ type RustFmt struct {
 }
 
 func (rs *RustFmt) format(file string) ([]byte, error) {
-	new, err := execFmt(rs.cmd, file)
+	cmd := buildCmd(rs.cmd, file)
+	new, err := cmd.CombinedOutput()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s %s: %v\n%s", rs.cmd, file, err, new)
 	}
@@ -78,7 +85,8 @@ type DefaultEolFmt struct {
 }
 
 func (df *DefaultEolFmt) format(file string) ([]byte, error) {
-	new, err := execFmt(df.cmd, file)
+	cmd := buildCmd(df.cmd, file)
+	new, err := cmd.CombinedOutput()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "default fmt eol %s: %v\n%s", file, err, new)
 	}
@@ -90,7 +98,8 @@ type ElmFmt struct {
 }
 
 func (el *ElmFmt) format(file string) ([]byte, error) {
-	new, err := execFmt(el.cmd, file)
+	cmd := buildCmd(el.cmd, file)
+	new, err := cmd.CombinedOutput()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s %s: %v\n%s", el.cmd, file, err, new)
 	}
